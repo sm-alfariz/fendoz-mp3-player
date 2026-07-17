@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}};
+use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering}};
 use std::fs::File;
 use std::sync::mpsc;
 use crate::db::queries::Track;
@@ -34,47 +34,30 @@ pub struct AudioPlayer {
     duration_ms: Arc<AtomicU64>,
 }
 
-use std::sync::atomic::AtomicU64;
-
 impl AudioPlayer {
     pub fn new() -> Self {
         let (command_tx, command_rx) = mpsc::channel();
-
         let state = Arc::new(AtomicU8::new(STATE_STOPPED));
         let mode = Arc::new(AtomicU8::new(1));
         let is_finished = Arc::new(AtomicBool::new(true));
         let position_ms = Arc::new(AtomicU64::new(0));
         let duration_ms = Arc::new(AtomicU64::new(0));
 
-        let state2 = state.clone();
-        let mode2 = mode.clone();
-        let is_finished2 = is_finished.clone();
-        let position_ms2 = position_ms.clone();
-        let duration_ms2 = duration_ms.clone();
-
-        thread::spawn(move || {
-            audio_thread(command_rx, state2, mode2, is_finished2, position_ms2, duration_ms2);
-        });
+        let (s2, m2, f2, p2, d2) = (state.clone(), mode.clone(), is_finished.clone(), position_ms.clone(), duration_ms.clone());
+        thread::spawn(move || audio_thread(command_rx, s2, m2, f2, p2, d2));
 
         Self { command_tx, state, mode, is_finished, position_ms, duration_ms }
     }
 
-    pub fn play(&self, track: Track) -> Result<(), String> {
-        self.command_tx.send(PlayerCommand::Play(track)).map_err(|e| e.to_string())
-    }
+    pub fn play(&self, track: Track) -> Result<(), String> { self.command_tx.send(PlayerCommand::Play(track)).map_err(|e| e.to_string()) }
     pub fn pause(&self) { let _ = self.command_tx.send(PlayerCommand::Pause); }
     pub fn resume(&self) { let _ = self.command_tx.send(PlayerCommand::Resume); }
     pub fn stop(&self) { let _ = self.command_tx.send(PlayerCommand::Stop); }
     pub fn seek(&self, position_ms: u64) { let _ = self.command_tx.send(PlayerCommand::Seek(position_ms)); }
     pub fn set_volume(&self, volume: f32) { let _ = self.command_tx.send(PlayerCommand::SetVolume(volume)); }
-
     pub fn get_state(&self) -> u8 { self.state.load(Ordering::Relaxed) }
-    pub fn get_mode(&self) -> PlaybackMode {
-        match self.mode.load(Ordering::Relaxed) { 0 => PlaybackMode::LoopSingle, 2 => PlaybackMode::Shuffle, _ => PlaybackMode::LoopAll }
-    }
-    pub fn set_mode(&self, mode: PlaybackMode) {
-        self.mode.store(match mode { PlaybackMode::LoopSingle => 0, PlaybackMode::LoopAll => 1, PlaybackMode::Shuffle => 2 }, Ordering::Relaxed);
-    }
+    pub fn get_mode(&self) -> PlaybackMode { match self.mode.load(Ordering::Relaxed) { 0 => PlaybackMode::LoopSingle, 2 => PlaybackMode::Shuffle, _ => PlaybackMode::LoopAll } }
+    pub fn set_mode(&self, mode: PlaybackMode) { self.mode.store(match mode { PlaybackMode::LoopSingle => 0, PlaybackMode::LoopAll => 1, PlaybackMode::Shuffle => 2 }, Ordering::Relaxed); }
     pub fn get_current_position(&self) -> u64 { self.position_ms.load(Ordering::Relaxed) }
     pub fn get_duration(&self) -> u64 { self.duration_ms.load(Ordering::Relaxed) }
     pub fn is_finished(&self) -> bool { self.is_finished.load(Ordering::Relaxed) }
@@ -95,14 +78,10 @@ fn audio_thread(
 
     loop {
         let cmd = command_rx.recv_timeout(std::time::Duration::from_millis(10));
-
         if let Ok(cmd) = cmd {
             match cmd {
                 PlayerCommand::Play(track) => {
-                    // Stop current
-                    if let Some(sink) = current_sink.take() {
-                        sink.stop();
-                    }
+                    if let Some(sink) = current_sink.take() { sink.stop(); }
 
                     let path = std::path::Path::new(&track.file_path);
                     eprintln!("[audio] Playing: {}", path.display());
@@ -111,9 +90,7 @@ fn audio_thread(
                         Ok(file) => {
                             match Decoder::new(std::io::BufReader::new(file)) {
                                 Ok(source) => {
-                                    let dur = source.total_duration()
-                                        .map(|d| d.as_millis() as u64)
-                                        .unwrap_or(0);
+                                    let dur = source.total_duration().map(|d| d.as_millis() as u64).unwrap_or(0);
                                     duration_ms.store(dur, Ordering::Relaxed);
                                     position_ms.store(0, Ordering::Relaxed);
 
@@ -147,14 +124,10 @@ fn audio_thread(
                     is_finished.store(true, Ordering::Relaxed);
                 }
                 PlayerCommand::Seek(pos_ms) => {
-                    if let Some(ref sink) = current_sink {
-                        let _ = sink.try_seek(std::time::Duration::from_millis(pos_ms));
-                    }
+                    if let Some(ref sink) = current_sink { let _ = sink.try_seek(std::time::Duration::from_millis(pos_ms)); }
                 }
                 PlayerCommand::SetVolume(vol) => {
-                    if let Some(ref sink) = current_sink {
-                        sink.set_volume(vol.clamp(0.0, 1.0));
-                    }
+                    if let Some(ref sink) = current_sink { sink.set_volume(vol.clamp(0.0, 1.0)); }
                 }
                 PlayerCommand::Quit => {
                     if let Some(sink) = current_sink.take() { sink.stop(); }
@@ -163,11 +136,10 @@ fn audio_thread(
             }
         }
 
-        // Update position from sink
+        // Update position
         if state.load(Ordering::Relaxed) == STATE_PLAYING {
             if let Some(ref sink) = current_sink {
-                let pos = sink.get_pos().as_millis() as u64;
-                position_ms.store(pos, Ordering::Relaxed);
+                position_ms.store(sink.get_pos().as_millis() as u64, Ordering::Relaxed);
                 if sink.empty() {
                     is_finished.store(true, Ordering::Relaxed);
                     state.store(STATE_STOPPED, Ordering::Relaxed);

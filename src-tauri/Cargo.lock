@@ -2223,7 +2223,6 @@ dependencies = [
 name = "mp3-player"
 version = "0.1.0"
 dependencies = [
- "cpal",
  "lofty",
  "rand",
  "rodio",
