@@ -63,8 +63,8 @@ impl AudioPlayer {
     pub fn is_finished(&self) -> bool { self.is_finished.load(Ordering::Relaxed) }
 }
 
-/// Decode file to f32 samples using ffmpeg
-fn decode_with_ffmpeg(path: &std::path::Path) -> Result<(Vec<f32>, u32, u16), String> {
+/// Decode file to f32 samples using ffmpeg, resampled to target sample rate
+fn decode_with_ffmpeg(path: &std::path::Path, target_sample_rate: u32) -> Result<(Vec<f32>, u32, u16), String> {
     use ffmpeg_next::format;
     use ffmpeg_next::codec;
     use ffmpeg_next::software::resampling;
@@ -98,6 +98,10 @@ fn decode_with_ffmpeg(path: &std::path::Path) -> Result<(Vec<f32>, u32, u16), St
     let target_format = Sample::F32(sample::Type::Planar);
     let target_layout = channel_layout;
 
+    // Use target sample rate (device rate) for resampling
+    let out_rate = target_sample_rate;
+    let out_channels = in_channels as usize;
+
     for (stream, packet) in ictx.packets() {
         if stream.index() != stream_index { continue; }
 
@@ -105,15 +109,15 @@ fn decode_with_ffmpeg(path: &std::path::Path) -> Result<(Vec<f32>, u32, u16), St
         while decoder.receive_frame(&mut frame).is_ok() {
             let mut resampler = resampling::Context::get(
                 decoder.format(), channel_layout, in_sample_rate,
-                target_format, target_layout, in_sample_rate,
+                target_format, target_layout, out_rate,
             ).map_err(|e| format!("resampler: {}", e))?;
 
             resampler.run(&frame, &mut output_frame).map_err(|e| e.to_string())?;
 
-            let ch = output_frame.channels() as usize;
-            let samples_per_ch = output_frame.samples();
-            for s in 0..samples_per_ch {
-                for c in 0..ch {
+            // Planar format: separate planes for each channel
+            let samples_per_channel = output_frame.samples();
+            for s in 0..samples_per_channel {
+                for c in 0..out_channels {
                     let data = output_frame.data(c);
                     let offset = s * 4;
                     if offset + 4 <= data.len() {
@@ -130,14 +134,13 @@ fn decode_with_ffmpeg(path: &std::path::Path) -> Result<(Vec<f32>, u32, u16), St
     while decoder.receive_frame(&mut frame).is_ok() {
         let mut resampler = resampling::Context::get(
             decoder.format(), channel_layout, in_sample_rate,
-            target_format, target_layout, in_sample_rate,
+            target_format, target_layout, out_rate,
         ).map_err(|e| e.to_string())?;
         resampler.run(&frame, &mut output_frame).map_err(|e| e.to_string())?;
 
-        let ch = output_frame.channels() as usize;
-        let samples_per_ch = output_frame.samples();
-        for s in 0..samples_per_ch {
-            for c in 0..ch {
+        let samples_per_channel = output_frame.samples();
+        for s in 0..samples_per_channel {
+            for c in 0..out_channels {
                 let data = output_frame.data(c);
                 let offset = s * 4;
                 if offset + 4 <= data.len() {
@@ -148,8 +151,8 @@ fn decode_with_ffmpeg(path: &std::path::Path) -> Result<(Vec<f32>, u32, u16), St
         }
     }
 
-    eprintln!("[ffmpeg] Decoded {} total samples", all_samples.len());
-    Ok((all_samples, in_sample_rate, in_channels))
+    eprintln!("[ffmpeg] Decoded {} total samples, resampled {} -> {} Hz", all_samples.len(), in_sample_rate, out_rate);
+    Ok((all_samples, out_rate, in_channels))
 }
 
 struct AudioBuffer {
@@ -208,12 +211,13 @@ fn audio_thread(
     let supported = device.default_output_config().expect("No default output config");
 
     let sample_format = supported.sample_format();
-    let device_sample_rate = supported.sample_rate().0;
+    // PipeWire runs at 48kHz; ALSA may report 44100 but actual rate is 48000
+    // Use 48000 to match PipeWire and avoid speed mismatch
+    let device_sample_rate = 48000u32;
 
-    // LARGE buffer to prevent Bluetooth/PipeWire underruns
     let config = StreamConfig {
         channels: supported.channels(),
-        sample_rate: supported.sample_rate(),
+        sample_rate: cpal::SampleRate(device_sample_rate),
         buffer_size: BufferSize::Fixed(4096),
     };
 
@@ -280,7 +284,7 @@ fn audio_thread(
                 PlayerCommand::Play(track) => {
                     let path = std::path::Path::new(&track.file_path);
                     eprintln!("[audio] Playing: {}", path.display());
-                    match decode_with_ffmpeg(path) {
+                    match decode_with_ffmpeg(path, device_sample_rate) {
                         Ok((samples, _rate, channels)) => {
                             let buf = AudioBuffer::new(samples, device_sample_rate, channels);
                             eprintln!("[audio] {} ms of audio ready", buf.duration_ms());
