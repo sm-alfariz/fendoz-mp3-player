@@ -27,6 +27,7 @@ symphonia = { version = "0.5", features = ["all"] }
 ffmpeg-sys-next = "8.1"
 ffmpeg-next = "8.0"
 cpal = "0.15"
+rodio = "0.19"
 lofty = "0.21"
 rustfft = "6.4"
 rand = "0.8"
