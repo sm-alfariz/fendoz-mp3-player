@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { usePlayer } from '../contexts/PlayerContext';
 import { useLyrics } from '../contexts/LyricsContext';
 import { Visualizer } from './Visualizer';
@@ -6,8 +6,8 @@ import { LyricsPanel } from './LyricsPanel';
 import { Equalizer } from './Equalizer';
 
 export function NowPlaying() {
-  const { currentTrack, position, loadLyrics, updateActiveLine } = useLyrics();
   const player = usePlayer();
+  const { loadLyrics, updateActiveLine } = useLyrics();
 
   useEffect(() => {
     if (player.currentTrack) {
@@ -16,8 +16,8 @@ export function NowPlaying() {
   }, [player.currentTrack, loadLyrics]);
 
   useEffect(() => {
-    updateActiveLine(position);
-  }, [position, updateActiveLine]);
+    updateActiveLine(player.position);
+  }, [player.position, updateActiveLine]);
 
   return (
     <div className="now-playing">

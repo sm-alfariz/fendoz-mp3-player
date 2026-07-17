@@ -1,4 +1,3 @@
-import React from 'react';
 import { useEq } from '../contexts/EqContext';
 
 export function Equalizer() {
@@ -51,7 +50,6 @@ export function Equalizer() {
               value={band.gain}
               onChange={(e) => handleBandChange(index, parseFloat(e.target.value))}
               className="band-slider"
-              orient="vertical"
             />
             <div className="band-label">{formatFrequency(band.frequency)}</div>
           </div>

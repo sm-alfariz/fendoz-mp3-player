@@ -1,4 +1,3 @@
-import React from 'react';
 import { usePlayer } from '../contexts/PlayerContext';
 import { PlaybackMode } from '../types';
 
@@ -10,15 +9,13 @@ export function PlayerBar() {
     state,
     mode,
     volume,
-    play,
     pause,
     resume,
-    stop,
     seek,
     setVolume,
     nextTrack,
     prevTrack,
-    setMode,
+    changeMode,
   } = usePlayer();
 
   const formatTime = (ms: number) => {
@@ -50,7 +47,7 @@ export function PlayerBar() {
     const modes: PlaybackMode[] = ['loop_all', 'loop_single', 'shuffle'];
     const currentIndex = modes.indexOf(mode);
     const nextIndex = (currentIndex + 1) % modes.length;
-    setMode(modes[nextIndex]);
+    changeMode(modes[nextIndex]);
   };
 
   const getModeIcon = () => {

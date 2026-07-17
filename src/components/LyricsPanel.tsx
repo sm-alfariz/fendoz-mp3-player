@@ -1,10 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLyrics } from '../contexts/LyricsContext';
-import { usePlayer } from '../contexts/PlayerContext';
 
 export function LyricsPanel() {
   const { lyrics, activeLineIndex } = useLyrics();
-  const { position } = usePlayer();
   const containerRef = useRef<HTMLDivElement>(null);
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -40,7 +38,7 @@ export function LyricsPanel() {
         {lyrics.map((line, index) => (
           <div
             key={index}
-            ref={(el) => (lineRefs.current[index] = el)}
+            ref={(el) => { lineRefs.current[index] = el; }}
             className={`lyric-line ${index === activeLineIndex ? 'active' : ''}`}
           >
             {line.text}

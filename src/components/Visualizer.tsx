@@ -1,5 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { useRef, useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { usePlayer } from '../contexts/PlayerContext';
 
@@ -9,7 +8,7 @@ export function Visualizer() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mode, setMode] = useState<VisualizerMode>('bars');
   const { state } = usePlayer();
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | undefined>(undefined);
   const fftDataRef = useRef<number[]>(new Array(64).fill(0));
 
   // Listen for FFT data from Rust

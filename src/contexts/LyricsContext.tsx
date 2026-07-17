@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { LyricLine, Track } from '../types';
 
@@ -6,6 +6,7 @@ interface LyricsContextType {
   lyrics: LyricLine[];
   activeLineIndex: number;
   loadLyrics: (track: Track) => Promise<void>;
+  updateActiveLine: (positionMs: number) => void;
 }
 
 const LyricsContext = createContext<LyricsContextType | undefined>(undefined);
@@ -20,14 +21,12 @@ export function LyricsProvider({ children }: { children: ReactNode }) {
     setActiveLineIndex(-1);
   }, []);
 
-  // Update active line based on position (will be passed from PlayerContext)
   const updateActiveLine = useCallback((positionMs: number) => {
     if (lyrics.length === 0) {
       setActiveLineIndex(-1);
       return;
     }
 
-    // Find the last lyric line that has timestamp <= positionMs
     let index = -1;
     for (let i = 0; i < lyrics.length; i++) {
       if (lyrics[i].timestamp_ms <= positionMs) {

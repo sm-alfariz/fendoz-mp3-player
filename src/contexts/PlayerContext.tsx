@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Track, PlaybackState, PlaybackMode } from '../types';
@@ -19,7 +19,7 @@ interface PlayerContextType {
   setVolume: (volume: number) => void;
   nextTrack: () => void;
   prevTrack: () => void;
-  setMode: (mode: PlaybackMode) => void;
+  changeMode: (mode: PlaybackMode) => void;
   setTracks: (tracks: Track[]) => void;
 }
 
@@ -30,7 +30,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
   const [state, setState] = useState<PlaybackState>('stopped');
-  const [mode, setMode] = useState<PlaybackMode>('loop_all');
+  const [mode, setModeState] = useState<PlaybackMode>('loop_all');
   const [volume, setVolumeState] = useState(0.8);
   const [tracks, setTracks] = useState<Track[]>([]);
 
@@ -121,9 +121,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [tracks]);
 
-  const setMode = useCallback(async (newMode: PlaybackMode) => {
+  const changeMode = useCallback(async (newMode: PlaybackMode) => {
     await invoke('set_playback_mode', { mode: newMode });
-    setMode(newMode);
+    setModeState(newMode);
   }, []);
 
   return (
@@ -144,7 +144,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setVolume,
         nextTrack,
         prevTrack,
-        setMode,
+        changeMode,
         setTracks,
       }}
     >

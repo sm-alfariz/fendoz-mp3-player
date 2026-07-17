@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { usePlayer } from '../contexts/PlayerContext';
@@ -7,7 +7,7 @@ import { Track } from '../types';
 
 export function FileExplorer() {
   const { setTracks, play } = usePlayer();
-  const { playlists, currentPlaylistId, addToPlaylist } = usePlaylist();
+  const { currentPlaylistId, addToPlaylist } = usePlaylist();
   const [currentPath, setCurrentPath] = useState<string>('');
   const [loading, setLoading] = useState(false);
 

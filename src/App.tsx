@@ -1,4 +1,3 @@
-import React from 'react';
 import { PlayerProvider } from './contexts/PlayerContext';
 import { PlaylistProvider } from './contexts/PlaylistContext';
 import { EqProvider } from './contexts/EqContext';
