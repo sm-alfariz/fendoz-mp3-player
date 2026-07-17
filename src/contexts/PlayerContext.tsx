@@ -1,13 +1,12 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import { Track, PlaybackState, PlaybackMode } from '../types';
+import { Track, PlaybackMode } from '../types';
 
 interface PlayerContextType {
   currentTrack: Track | null;
   position: number;
   duration: number;
-  state: PlaybackState;
+  state: string;
   mode: PlaybackMode;
   volume: number;
   tracks: Track[];
@@ -29,53 +28,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [state, setState] = useState<PlaybackState>('stopped');
+  const [state, setState] = useState<string>('stopped');
   const [mode, setModeState] = useState<PlaybackMode>('loop_all');
-  const [volume, setVolumeState] = useState(0.8);
+  const [volume] = useState(0.8);
   const [tracks, setTracks] = useState<Track[]>([]);
+  const tracksRef = useRef(tracks);
+  tracksRef.current = tracks;
 
-  // Listen for position updates from Rust
+  // Poll position every 100ms
   useEffect(() => {
-    const unlisten = listen<{ position_ms: number; duration_ms: number; is_playing: boolean }>(
-      'playback-position',
-      (event) => {
-        setPosition(event.payload.position_ms);
-        setDuration(event.payload.duration_ms);
-      }
-    );
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
+    const interval = setInterval(async () => {
+      try {
+        const [pos, dur, st] = await Promise.all([
+          invoke<number>('get_current_position'),
+          invoke<number>('get_current_duration'),
+          invoke<string>('get_playback_state'),
+        ]);
+        setPosition(pos);
+        setDuration(dur);
+        setState(st);
+      } catch {}
+    }, 100);
+    return () => clearInterval(interval);
   }, []);
-
-  // Listen for track changes
-  useEffect(() => {
-    const unlisten = listen<{ track: Track }>('track-changed', (event) => {
-      setCurrentTrack(event.payload.track);
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
-
-  // Listen for playback ended
-  useEffect(() => {
-    const unlisten = listen<{ next_track_id?: string }>('playback-ended', () => {
-      nextTrack();
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [tracks, mode, currentTrack]);
 
   const play = useCallback(async (track: Track) => {
-    await invoke('play', { trackId: track.id, tracks });
+    await invoke('play', { trackId: track.id, tracks: tracksRef.current });
     setCurrentTrack(track);
     setState('playing');
-  }, [tracks]);
+  }, []);
 
   const pause = useCallback(async () => {
     await invoke('pause');
@@ -95,31 +76,29 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const seek = useCallback(async (positionMs: number) => {
     await invoke('seek', { positionMs });
-    setPosition(positionMs);
   }, []);
 
   const setVolume = useCallback(async (vol: number) => {
     await invoke('set_volume', { volume: vol });
-    setVolumeState(vol);
   }, []);
 
   const nextTrack = useCallback(async () => {
-    if (tracks.length === 0) return;
-    const next = await invoke<Track | null>('next_track', { tracks });
+    if (tracksRef.current.length === 0) return;
+    const next = await invoke<Track | null>('next_track', { tracks: tracksRef.current });
     if (next) {
       setCurrentTrack(next);
       setState('playing');
     }
-  }, [tracks]);
+  }, []);
 
   const prevTrack = useCallback(async () => {
-    if (tracks.length === 0) return;
-    const prev = await invoke<Track | null>('prev_track', { tracks });
+    if (tracksRef.current.length === 0) return;
+    const prev = await invoke<Track | null>('prev_track', { tracks: tracksRef.current });
     if (prev) {
       setCurrentTrack(prev);
       setState('playing');
     }
-  }, [tracks]);
+  }, []);
 
   const changeMode = useCallback(async (newMode: PlaybackMode) => {
     await invoke('set_playback_mode', { mode: newMode });
